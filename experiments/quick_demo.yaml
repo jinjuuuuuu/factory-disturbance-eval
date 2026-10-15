@@ -1,0 +1,17 @@
+# quick_demo.yaml - 프레임워크 시연용 작은 실험 (모델 1개, 조건 7개, 5회씩 = 약 15분)
+#   python run_experiment.py --config experiments/quick_demo.yaml
+name: quick_demo
+episodes: 5
+workers_per_model: 2
+
+models:
+  act: /data/jinju/factory/act_v2_s1/checkpoints/030000/pretrained_model
+
+runs:
+  baseline: {}                                        # 외란 없음
+  friction: {sweep: friction, levels: [2, 4]}         # 마찰 2·4단계
+  light:    {sweep: light, levels: [3, 5]}            # 조명 3·5단계
+  combined: {sweep: all, levels: [2]}                 # 6종 동시 2단계
+  custom:   {disturbance: "com=4,mass=3"}             # 조합 직접 지정
+
+analyze: true

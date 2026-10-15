@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.npz
+*.mp4
+*.gif
+outputs/
+checks/*_result.json

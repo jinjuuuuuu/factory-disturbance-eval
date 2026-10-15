@@ -1,0 +1,29 @@
+# paper_main.yaml - 논문 본 실험과 같은 설정
+#   ACT·DP x 학습 시드 3개 x 조건 36개(외란 없음 + 6종 x 5단계 + 6종 동시 x 5단계) x 25회
+#   python run_experiment.py --config experiments/paper_main.yaml
+# 모델 이름을 <모델>_s<시드>로 두면 분석이 시드끼리 묶어 평균 ± 표준편차를 낸다.
+# 체크포인트는 시드마다 고르지 않고 마지막 스텝(ACT 3만, DP 4만)으로 고정한다.
+name: paper_main
+episodes: 25
+eval_seed: 0
+workers_per_model: 2
+
+models:
+  act_s1: /data/jinju/factory/act_v2_s1/checkpoints/030000/pretrained_model
+  act_s2: /data/jinju/factory/act_v2_s2/checkpoints/030000/pretrained_model
+  act_s3: /data/jinju/factory/act_v2_s3/checkpoints/030000/pretrained_model
+  dp_s1:  /data/jinju/factory/dp_v2_s1/checkpoints/040000/pretrained_model
+  dp_s2:  /data/jinju/factory/dp_v2_s2/checkpoints/040000/pretrained_model
+  dp_s3:  /data/jinju/factory/dp_v2_s3/checkpoints/040000/pretrained_model
+
+runs:
+  baseline: {}
+  friction: {sweep: friction, levels: [1, 2, 3, 4, 5]}
+  light:    {sweep: light,    levels: [1, 2, 3, 4, 5]}
+  flicker:  {sweep: flicker,  levels: [1, 2, 3, 4, 5]}
+  camera:   {sweep: camera,   levels: [1, 2, 3, 4, 5]}
+  mass:     {sweep: mass,     levels: [1, 2, 3, 4, 5]}
+  com:      {sweep: com,      levels: [1, 2, 3, 4, 5]}
+  combined: {sweep: all,      levels: [1, 2, 3, 4, 5]}
+
+analyze: true
