@@ -34,6 +34,9 @@ EPISODES = [(i, p) for i, p in enumerate(POSITIONS)
 SAVE_FAIL_FRAMES = os.environ.get("SAVE_FAIL_FRAMES", "0") == "1"
 # RECORD_GIF=<경로>: 첫 에피소드를 고정 카메라 GIF로 저장 (화면 앱·포스터 시연용)
 RECORD_GIF = os.environ.get("RECORD_GIF", "").strip()
+RENDER_LOOKAHEAD = int(os.environ.get("RENDER_LOOKAHEAD", "0"))
+# SAVE_OBS_DIR=<폴더>: 에피소드마다 정책이 받은 처음 3개 관측(고정 카메라)을 저장 (렌더링 방식 비교용)
+SAVE_OBS_DIR = os.environ.get("SAVE_OBS_DIR", "").strip()
 
 
 # ---- 소켓 ------------------------------------------------------------------
@@ -144,6 +147,7 @@ for ep, (bx, by) in EPISODES:
     grasp_attempted, was_lifted, dropped = False, False, False
     # 재시도 분석: 그리퍼를 연 상태에서 닫으라고 명령한 횟수, 상자를 들어 올린 횟수
     n_grasp_cmds, n_lifts, prev_closed, prev_lifted = 0, 0, False, False
+    n_saved_obs = 0
     min_ee_box = 9.0
     frames = []
     for step in range(C.MAX_EVAL_STEPS):
@@ -159,6 +163,10 @@ for ep, (bx, by) in EPISODES:
                 o = F.grab_rgb(s, s.over_cam)
                 if SAVE_FAIL_FRAMES and len(frames) < 400:
                     frames.append(o)
+                if SAVE_OBS_DIR and n_saved_obs < 3:
+                    os.makedirs(SAVE_OBS_DIR, exist_ok=True)
+                    Image.fromarray(o).save(os.path.join(SAVE_OBS_DIR, f"ep{ep:02d}_obs{n_saved_obs}_step{step}.png"))
+                    n_saved_obs += 1
             raw, need_obs = act(w, o, q, send_img)
             cmd = binarize(raw)
             closed = float(cmd[7]) < C.GRIPPER_CLOSE_THRESH
@@ -166,8 +174,14 @@ for ep, (bx, by) in EPISODES:
                 n_grasp_cmds += 1
             prev_closed = closed
         s.franka.apply_action(ArticulationAction(joint_positions=cmd))
-        s.world.step(render=True)
-        if RECORD_GIF and ep == EPISODES[0][0] and step % 6 == 0:
+        # 렌더링은 정책이 다음에 화면을 볼 때만 필요하다. RENDER_LOOKAHEAD=n이면 관측 직전 n개
+        # 물리 스텝만 렌더링한다(물리는 매 스텝 그대로). 0이면 예전처럼 매 스텝 렌더링.
+        # ACT는 한 번 보고 100 정책스텝을 실행하므로 렌더링이 크게 줄어든다.
+        gif_step = RECORD_GIF and ep == EPISODES[0][0] and (step + 1) % 6 == 0
+        render_now = (RENDER_LOOKAHEAD <= 0 or step < 2 or gif_step
+                      or (need_obs and (step % ACTION_REPEAT) >= ACTION_REPEAT - RENDER_LOOKAHEAD))
+        s.world.step(render=render_now)
+        if RECORD_GIF and ep == EPISODES[0][0] and step % 6 == 5:
             gif_frames.append(Image.fromarray(F.grab_rgb(s, s.over_cam)))
 
         b = F.box_pos(s)
