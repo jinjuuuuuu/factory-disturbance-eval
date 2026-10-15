@@ -305,11 +305,11 @@ def apply_episode_disturbance(s, params, draws):
     pos[0, 0, :] = np.array(draws["com_offset"], dtype=np.float32)
     s.box_view.set_coms(positions=pos, orientations=np.array(ori, dtype=np.float32).reshape(1, 1, 4))
 
-    # 4) 고정 카메라 거치대 틀어짐
-    t = [C.OVER_TRANSLATE[i] + draws["cam_offset"][i] for i in range(3)]
-    r = [C.OVER_ROTATE[i] + draws["cam_rot_deg"] * draws["cam_rot_axis"][i] for i in range(3)]
-    UsdGeom.XformCommonAPI(s.over_xform).SetTranslate(Gf.Vec3d(*t))
-    UsdGeom.XformCommonAPI(s.over_xform).SetRotate(Gf.Vec3f(*r))
+    # 4) 고정 카메라 거치대 틀어짐 (에피소드 동안 고정). 흔들림은 이 자세를 기준으로 떨린다.
+    s.cam_base_t = [C.OVER_TRANSLATE[i] + draws["cam_offset"][i] for i in range(3)]
+    s.cam_base_r = [C.OVER_ROTATE[i] + draws["cam_rot_deg"] * draws["cam_rot_axis"][i] for i in range(3)]
+    UsdGeom.XformCommonAPI(s.over_xform).SetTranslate(Gf.Vec3d(*s.cam_base_t))
+    UsdGeom.XformCommonAPI(s.over_xform).SetRotate(Gf.Vec3f(*s.cam_base_r))
 
     # 5) 조명 기준 밝기 (깜빡임은 set_lights_for_step이 매 관측마다)
     set_light_scale(s, float(params["light_scale"]))
@@ -329,6 +329,17 @@ def set_lights_for_step(s, params, draws, k):
     on = draws["flicker_on"][k % len(draws["flicker_on"])]
     base = float(params["light_scale"])
     set_light_scale(s, base * (FLICKER_LOW if on else 1.0))
+
+
+def set_camera_shake_for_step(s, params, draws, k):
+    """정책이 관측하는 k번째 시점의 고정 카메라 떨림. 흔들림이 꺼져 있으면 아무것도 바꾸지 않는다."""
+    if params.get("shake_shift", 0) <= 0 and params.get("shake_rot_deg", 0) <= 0:
+        return
+    dt, dr = draws["shake"][k % len(draws["shake"])]
+    t = [s.cam_base_t[i] + dt[i] for i in range(3)]
+    r = [s.cam_base_r[i] + dr[i] for i in range(3)]
+    UsdGeom.XformCommonAPI(s.over_xform).SetTranslate(Gf.Vec3d(*t))
+    UsdGeom.XformCommonAPI(s.over_xform).SetRotate(Gf.Vec3f(*r))
 
 
 def read_back(s):

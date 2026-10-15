@@ -45,7 +45,7 @@ LEVELS = {
     # 가이드: dx,y,z +-1~5cm, dtheta +-1~5 deg. 방향은 에피소드마다 무작위(시드 고정).
     "camera": {"key": "cam_shift", "values": [0.0, 0.01, 0.02, 0.03, 0.04, 0.05],
                "rot_values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
-               "unit": "m/deg", "desc": "카메라 거치대 진동·틀어짐 (위치+각도)"},
+               "unit": "m/deg", "desc": "카메라 거치대 틀어짐 (에피소드 동안 고정, 위치+각도)"},
 
     # 상자 질량 배율 (기준 0.2kg). 가이드는 0.5~2.0배. [잠정] 2배까지는 파지에
     # 영향이 없을 수 있어 6배(1.2kg)까지 둔다 - 점검 결과로 조정.
@@ -57,12 +57,23 @@ LEVELS = {
     # 무게중심 단독 시험은 질량을 3배로 고정한 상태에서 한다(COM_TEST_MASS_SCALE).
     "com": {"key": "com_shift", "values": [0.0, 0.004, 0.008, 0.012, 0.016, 0.020],
             "unit": "m", "desc": "내용물 쏠림 (무게중심 편심)"},
+
+    # 화면 흔들림: 고정 카메라가 정책이 관측할 때마다 다른 위치·각도로 떨린다(설비 진동).
+    # 'camera'는 에피소드 동안 고정된 틀어짐, 'shake'는 시시각각 바뀌는 떨림이다 -
+    # 조명의 '저하(고정)'와 '깜빡임(시시각각)'과 같은 짝. 값은 떨림의 RMS 크기.
+    "shake": {"key": "shake_shift", "values": [0.0, 0.0025, 0.005, 0.01, 0.02, 0.03],
+              "rot_values": [0.0, 0.25, 0.5, 1.0, 2.0, 3.0],
+              "unit": "m/deg (RMS)", "desc": "화면 흔들림 (설비 진동)"},
 }
 
 # 무게중심 단독 시험 때의 질량 배율 (가벼운 상자는 쏠려도 파지에 영향이 없다)
 COM_TEST_MASS_SCALE = 3.0
 
-ORDER = ["friction", "light", "flicker", "camera", "mass", "com"]
+ORDER = ["friction", "light", "flicker", "camera", "mass", "com", "shake"]
+# 'all=k'(복합 외란)에 들어가는 외란 = 7종 전부. 현장에서는 진동도 다른 외란과 함께 온다.
+ALL_FAMS = list(ORDER)
+VISUAL = ["light", "flicker", "camera", "shake"]
+PHYSICAL = ["friction", "mass", "com"]
 
 FLICKER_LOW = 0.2       # 깜빡일 때 밝기 배율
 
@@ -70,6 +81,7 @@ FLICKER_LOW = 0.2       # 깜빡일 때 밝기 배율
 def default_params():
     p = {LEVELS[n]["key"]: LEVELS[n]["values"][0] for n in ORDER}
     p["cam_rot_deg"] = 0.0
+    p["shake_rot_deg"] = 0.0
     return p
 
 
@@ -89,7 +101,7 @@ def parse(spec):
         name, val = (s.strip() for s in item.split("=", 1))
         if name == "all":
             lv = _level(val, name)
-            for n in ORDER:
+            for n in ALL_FAMS:
                 _apply_level(params, levels, n, lv)
         elif name in LEVELS:
             _apply_level(params, levels, name, _level(val, name))
@@ -116,12 +128,16 @@ def _apply_level(params, levels, name, lv):
     params[d["key"]] = d["values"][lv]
     if name == "camera":
         params["cam_rot_deg"] = d["rot_values"][lv]
+    if name == "shake":
+        params["shake_rot_deg"] = d["rot_values"][lv]
     levels[name] = lv
 
 
 def _owner(key):
     if key == "cam_rot_deg":
         return "camera"
+    if key == "shake_rot_deg":
+        return "shake"
     for n in ORDER:
         if LEVELS[n]["key"] == key:
             return n
@@ -165,6 +181,11 @@ def episode_draws(params, seed, ep, n_policy_steps=600):
     cam_rot_axis = unit_vec3(rng)
     com_ang = rng.uniform(0.0, 2.0 * math.pi)
     flicker_u = [rng.random() for _ in range(n_policy_steps)]
+    # 흔들림은 나중에 추가된 외란이라 기존 값들 '뒤에서' 뽑는다 -> 기존 외란의 무작위값은
+    # 흔들림 추가 전과 똑같다. 축마다 표준편차 = 크기/sqrt(3) 이라 떨림의 RMS가 지정 크기가 된다.
+    k = 1.0 / math.sqrt(3.0)
+    shake = [([rng.gauss(0, k) for _ in range(3)], [rng.gauss(0, k) for _ in range(3)])
+             for _ in range(n_policy_steps)]
     return {
         "cam_offset": [params["cam_shift"] * c for c in cam_dir],
         "cam_rot_axis": cam_rot_axis,
@@ -172,6 +193,9 @@ def episode_draws(params, seed, ep, n_policy_steps=600):
         "com_offset": [params["com_shift"] * math.cos(com_ang),
                        params["com_shift"] * math.sin(com_ang), 0.0],
         "flicker_on": [u < params["flicker_prob"] for u in flicker_u],
+        # 관측 k번째의 떨림: (이동[m] 3축, 회전[deg] 3축)
+        "shake": [([params["shake_shift"] * x for x in t], [params["shake_rot_deg"] * x for x in r])
+                  for t, r in shake],
     }
 
 
@@ -180,7 +204,7 @@ if __name__ == "__main__":
     for n in ORDER:
         d = LEVELS[n]
         vals = " ".join(f"{v:g}" for v in d["values"])
-        extra = (" / 회전 " + " ".join(f"{v:g}" for v in d["rot_values"]) + "deg") if n == "camera" else ""
+        extra = (" / 회전 " + " ".join(f"{v:g}" for v in d["rot_values"]) + "deg") if "rot_values" in d else ""
         print(f"  {n:9s} [{d['unit']}] {vals}{extra}   - {d['desc']}")
     for s in ["", "friction=3", "light=2,com=4", "all=5", "friction_mu=0.33"]:
         print(f"  DIST={s!r:22s} -> {label(s):35s} {parse(s)[0]}")

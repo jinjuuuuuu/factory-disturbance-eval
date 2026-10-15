@@ -26,7 +26,7 @@ if [ -n "$LIST" ]; then
   mapfile -t CONDS < "$LIST"
 else
   CONDS=("")
-  for f in friction light flicker camera mass com; do
+  for f in friction light flicker camera shake mass com; do
     for l in 1 2 3 4 5; do CONDS+=("$f=$l"); done
   done
   for l in 1 2 3 4 5; do CONDS+=("all=$l"); done

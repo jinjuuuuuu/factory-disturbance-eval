@@ -150,6 +150,7 @@ for ep, (bx, by) in EPISODES:
         q = np.array(s.franka.get_joint_positions(), dtype=np.float32)[:9]
         if step % ACTION_REPEAT == 0 or cmd is None:
             F.set_lights_for_step(s, PARAMS, draws, k_obs)
+            F.set_camera_shake_for_step(s, PARAMS, draws, k_obs)
             k_obs += 1
             send_img = need_obs or step == 0
             w = o = None

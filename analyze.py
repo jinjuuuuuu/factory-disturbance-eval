@@ -27,16 +27,17 @@ import disturbances as DI
 
 FAMS = DI.ORDER + ["all"]
 NAMES_KO = {"friction": "마찰", "light": "조명 밝기", "flicker": "조명 깜빡임", "camera": "카메라 틀어짐",
-            "mass": "질량", "com": "무게중심 쏠림", "all": "6종 동시"}
+            "shake": "화면 흔들림", "mass": "질량", "com": "무게중심 쏠림", "all": "7종 동시"}
 NAMES_EN = {"friction": "Friction", "light": "Light dimming", "flicker": "Light flicker",
-            "camera": "Camera shift+rot", "mass": "Mass", "com": "CoM shift", "all": "All six"}
+            "camera": "Camera offset", "shake": "Camera shake", "mass": "Mass", "com": "CoM shift",
+            "all": "All seven"}
 
 
 def family_level(levels):
     on = {k: v for k, v in levels.items() if v > 0}
     if not on:
         return "clean", 0
-    if len(on) == len(DI.ORDER) and len(set(on.values())) == 1:
+    if set(on) == set(DI.ALL_FAMS) and len(set(on.values())) == 1:
         return "all", next(iter(on.values()))
     if len(on) == 1:
         k = next(iter(on))
@@ -141,6 +142,8 @@ def main():
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    # 시각 외란 윗줄, 물리 외란 + 동시 외란 아랫줄 (8칸 = 시각 4 + 물리 3 + 동시 1)
+    FAMS = DI.VISUAL + DI.PHYSICAL + ["all"]
     fig, axes = plt.subplots(2, 4, figsize=(12, 5.6), sharey=True)
     colors = {"act": "#2b6cb0", "dp": "#c05621", "pi0": "#2f855a"}
     for ax, fam in zip(axes.flat, FAMS):
@@ -163,11 +166,10 @@ def main():
         ax.set_xticks(range(0, DI.N_LEVELS + 1))
         ax.set_ylim(-3, 103)
         ax.grid(alpha=0.3)
-    axes.flat[-1].axis("off")
     axes.flat[0].legend(fontsize=9, loc="lower left")
-    for ax in axes[:, 0]:
-        ax.set_ylabel("Success rate (%)")
-    for ax in axes[1, :3]:
+    axes[0, 0].set_ylabel("Visual — success (%)")
+    axes[1, 0].set_ylabel("Physical — success (%)")
+    for ax in axes[1, :]:
         ax.set_xlabel("Disturbance level")
     fig.tight_layout()
     for ext in ("png", "pdf"):

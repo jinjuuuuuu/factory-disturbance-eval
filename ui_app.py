@@ -79,14 +79,16 @@ def ensure_server(path):
     return port
 
 
-def dist_string(mu, light, flicker, cam_cm, cam_deg, mass, com_cm):
+def dist_string(mu, light, flicker, cam_cm, cam_deg, shake_cm, shake_deg, mass, com_cm):
     return (f"friction_mu={mu},light_scale={light / 100:.3f},flicker_prob={flicker / 100:.3f},"
-            f"cam_shift={cam_cm / 100:.3f},cam_rot_deg={cam_deg},mass_scale={mass},com_shift={com_cm / 100:.4f}")
+            f"cam_shift={cam_cm / 100:.3f},cam_rot_deg={cam_deg},"
+            f"shake_shift={shake_cm / 100:.4f},shake_rot_deg={shake_deg},"
+            f"mass_scale={mass},com_shift={com_cm / 100:.4f}")
 
 
-def preview(mu, light, flicker, cam_cm, cam_deg, mass, com_cm):
+def preview(mu, light, flicker, cam_cm, cam_deg, shake_cm, shake_deg, mass, com_cm):
     out = os.path.join(WORK, f"pv_{int(time.time())}")
-    dist = dist_string(mu, light, flicker, cam_cm, cam_deg, mass, com_cm)
+    dist = dist_string(mu, light, flicker, cam_cm, cam_deg, shake_cm, shake_deg, mass, com_cm)
     env = dict(os.environ, DIST=dist, PREVIEW_OUT=out)
     yield None, None, f"미리보기 렌더링 중... (Isaac Sim 시작에 30~60초)\nDIST={dist}"
     r = subprocess.run([ISAAC, "-u", "checks/preview.py"], cwd=HERE, env=env, capture_output=True, text=True)
@@ -96,11 +98,11 @@ def preview(mu, light, flicker, cam_cm, cam_deg, mass, com_cm):
            f"적용된 물리값: {line.replace('PREVIEW_DONE ', '')}\nDIST={dist}")
 
 
-def run_eval(model, n_ep, mu, light, flicker, cam_cm, cam_deg, mass, com_cm):
+def run_eval(model, n_ep, mu, light, flicker, cam_cm, cam_deg, shake_cm, shake_deg, mass, com_cm):
     if model not in MODELS:
         yield None, "모델을 고르세요.", None
         return
-    dist = dist_string(mu, light, flicker, cam_cm, cam_deg, mass, com_cm)
+    dist = dist_string(mu, light, flicker, cam_cm, cam_deg, shake_cm, shake_deg, mass, com_cm)
     port = ensure_server(MODELS[model])
     tag = f"ev_{int(time.time())}"
     out_json = os.path.join(WORK, tag + ".json")
@@ -139,7 +141,7 @@ def load_sweeps():
         on = [k for k, v in lv.items() if v > 0]
         if not on:
             fams, level = list(DI.ORDER) + ["all"], 0           # 기준점은 모든 곡선의 0단계
-        elif len(on) == len(DI.ORDER):
+        elif set(on) == set(DI.ALL_FAMS):
             fams, level = ["all"], max(lv.values())
         elif len(on) == 1 or (len(on) == 2 and "mass" in on and "com" in on):
             fam = "com" if "com" in on else on[0]
@@ -170,13 +172,17 @@ with gr.Blocks(title="공장 외란 주입 검증") as app:
                                         value=(list(MODELS) or [None])[0], scale=4)
                     b_ref = gr.Button("목록 새로고침", scale=1)
                 n_ep = gr.Slider(1, 30, value=5, step=1, label="평가 에피소드 수")
-                mu = gr.Slider(0.1, 1.0, value=1.0, step=0.05, label="상자 마찰계수 (1.0 = 외란 없음)")
+                gr.Markdown("**시각 외란** (카메라 영상이 달라짐)")
                 light = gr.Slider(10, 100, value=100, step=5, label="조명 밝기 % (100 = 외란 없음)")
                 flicker = gr.Slider(0, 50, value=0, step=5, label="조명 깜빡임 확률 %")
-                cam_cm = gr.Slider(0, 5, value=0, step=0.5, label="고정 카메라 이동 (cm)")
-                cam_deg = gr.Slider(0, 5, value=0, step=0.5, label="고정 카메라 회전 (도)")
+                cam_cm = gr.Slider(0, 5, value=0, step=0.5, label="카메라 틀어짐: 이동 (cm)")
+                cam_deg = gr.Slider(0, 5, value=0, step=0.5, label="카메라 틀어짐: 회전 (도)")
+                shake_cm = gr.Slider(0, 3, value=0, step=0.25, label="화면 흔들림: 이동 RMS (cm)")
+                shake_deg = gr.Slider(0, 3, value=0, step=0.25, label="화면 흔들림: 회전 RMS (도)")
+                gr.Markdown("**물리 외란** (상자를 잡고 옮기는 힘이 달라짐)")
+                mu = gr.Slider(0.1, 1.0, value=1.0, step=0.05, label="상자 마찰계수 (1.0 = 외란 없음)")
                 mass = gr.Slider(1.0, 6.0, value=1.0, step=0.5, label="상자 질량 배율 (기준 0.2kg)")
-                com = gr.Slider(0, 2.0, value=0, step=0.2, label="무게중심 쏠림 (cm)")
+                com = gr.Slider(0, 2.0, value=0, step=0.2, label="무게중심 쏠림 (cm) - 질량 3배와 함께 권장")
                 with gr.Row():
                     b_pv = gr.Button("미리보기")
                     b_run = gr.Button("평가 실행", variant="primary")
@@ -188,7 +194,7 @@ with gr.Blocks(title="공장 외란 주입 검증") as app:
                 gif = gr.Image(label="첫 에피소드 (고정 카메라)", height=260)
                 summary = gr.JSON(label="결과 요약")
                 log = gr.Textbox(label="에피소드 로그", lines=10)
-        sliders = [mu, light, flicker, cam_cm, cam_deg, mass, com]
+        sliders = [mu, light, flicker, cam_cm, cam_deg, shake_cm, shake_deg, mass, com]
         b_pv.click(preview, sliders, [img_over, img_wrist, info])
         b_run.click(run_eval, [model, n_ep] + sliders, [gif, log, summary])
         b_ref.click(model_choices, None, model)

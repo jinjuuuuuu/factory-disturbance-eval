@@ -26,6 +26,7 @@ F.apply_episode_disturbance(s, params, draws)
 F.move_to_start(s)
 if params["flicker_prob"] > 0:
     F.set_light_scale(s, params["light_scale"] * D.FLICKER_LOW)   # 깜빡여 어두워진 순간
+F.set_camera_shake_for_step(s, params, draws, 0)                  # 흔들린 한 순간
 F.settle(s, 10)
 Image.fromarray(F.grab_rgb(s, s.over_cam)).save(os.path.join(OUT, "over.png"))
 Image.fromarray(F.grab_rgb(s, s.wrist_cam)).save(os.path.join(OUT, "wrist.png"))
