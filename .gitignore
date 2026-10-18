@@ -5,3 +5,4 @@ __pycache__/
 *.gif
 outputs/
 checks/*_result.json
+results/eval_v2/
