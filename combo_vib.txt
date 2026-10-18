@@ -1,0 +1,15 @@
+vib=1
+vib=2
+vib=3
+vib=4
+vib=5
+camera=1,vib=1
+camera=2,vib=2
+camera=3,vib=3
+camera=4,vib=4
+camera=5,vib=5
+all_vib=1
+all_vib=2
+all_vib=3
+all_vib=4
+all_vib=5

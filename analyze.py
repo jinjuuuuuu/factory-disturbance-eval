@@ -12,7 +12,7 @@
 #   떨어지는 단계. 5단계까지 떨어지지 않으면 '>5'.
 #
 # 출력: summary.csv (모델·외란·단계별 평균/표준편차), breakdown.csv, failure_modes.csv,
-#       fig_curves.png (외란별 성공률 곡선), fig_curves.pdf
+#       fig_curves.png (외란별 성공률 곡선), fig_curves.pdf, fig_combos.png (현장 조합)
 # ---------------------------------------------------------------------------
 import os
 import re
@@ -25,12 +25,25 @@ import numpy as np
 
 import disturbances as DI
 
-FAMS = DI.ORDER + ["all"]
+# 현장 조합 외란: 이름 -> 함께 켜는 외란 (모두 같은 단계). 결과가 있으면 표와 fig_combos에 들어간다.
+COMBOS = {"friction_com": ("friction", "com"), "light_flicker": ("light", "flicker"),
+          "camera_shake": ("camera", "shake"), "mass_com": ("mass", "com"),
+          "camera_vib": ("camera", "vib"),
+          # 대조 조건: 마찰+무게중심의 급락이 쏠림 때문인지 무게(3배) 때문인지 가른다
+          "friction_mass3": ("friction", "mass")}
+FAMS = DI.ORDER + ["all", "all_vib"] + list(COMBOS)
 NAMES_KO = {"friction": "마찰", "light": "조명 밝기", "flicker": "조명 깜빡임", "camera": "카메라 틀어짐",
-            "shake": "화면 흔들림", "mass": "질량", "com": "무게중심 쏠림", "all": "7종 동시"}
+            "shake": "화면 흔들림", "mass": "질량", "com": "무게중심 쏠림", "all": "7종 동시",
+            "vib": "연속 진동", "all_vib": "7종 동시 (연속 진동)"}
 NAMES_EN = {"friction": "Friction", "light": "Light dimming", "flicker": "Light flicker",
             "camera": "Camera offset", "shake": "Camera shake", "mass": "Mass", "com": "CoM shift",
-            "all": "All seven"}
+            "all": "All seven", "vib": "Vibration (sine)", "all_vib": "All seven (vibration)"}
+NAMES_KO.update({"friction_com": "마찰+무게중심", "light_flicker": "야간·조명 노후 (밝기+깜빡임)",
+                 "camera_shake": "설비 진동 (틀어짐+흔들림)", "mass_com": "무겁고 쏠린 제품 (질량+무게중심)",
+                 "friction_mass3": "마찰+무게 3배 (대조)", "camera_vib": "설비 진동 (틀어짐+연속 진동)"})
+NAMES_EN.update({"friction_com": "Friction + CoM", "light_flicker": "Dimming + flicker",
+                 "camera_shake": "Camera offset + shake", "mass_com": "Mass + CoM",
+                 "friction_mass3": "Friction + mass x3 (control)", "camera_vib": "Camera offset + vibration"})
 
 
 def family_level(levels):
@@ -39,9 +52,17 @@ def family_level(levels):
         return "clean", 0
     if set(on) == set(DI.ALL_FAMS) and len(set(on.values())) == 1:
         return "all", next(iter(on.values()))
+    if set(on) == set(DI.ALL_VIB_FAMS) and len(set(on.values())) == 1:
+        return "all_vib", next(iter(on.values()))
     if len(on) == 1:
         k = next(iter(on))
         return k, on[k]
+    # 대조 조건: 질량은 3단계(3배)로 고정하고 마찰 단계만 올린다
+    if set(on) == {"friction", "mass"} and on["mass"] == 3:
+        return "friction_mass3", on["friction"]
+    for name, fams in COMBOS.items():
+        if set(on) == set(fams) and len(set(on.values())) == 1:
+            return name, next(iter(on.values()))
     return None, None
 
 
@@ -143,10 +164,50 @@ def main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     # 시각 외란 윗줄, 물리 외란 + 동시 외란 아랫줄 (8칸 = 시각 4 + 물리 3 + 동시 1)
-    FAMS = DI.VISUAL + DI.PHYSICAL + ["all"]
+    PLOT_FAMS = DI.VISUAL + DI.PHYSICAL + ["all"]
     fig, axes = plt.subplots(2, 4, figsize=(12, 5.6), sharey=True)
+    plot_panels(axes, PLOT_FAMS, models, rates, bp)
+    axes[0, 0].set_ylabel("Visual — success (%)")
+    axes[1, 0].set_ylabel("Physical — success (%)")
+    for ax in axes[1, :]:
+        ax.set_xlabel("Disturbance level")
+    fig.tight_layout()
+    for ext in ("png", "pdf"):
+        fig.savefig(os.path.join(args.out, f"fig_curves.{ext}"), dpi=200)
+
+    # 현장 조합 그림 (결과가 있는 조합만)
+    combos = [c for c in COMBOS if c != "camera_vib" and any(k[1] == c for k in rates)]
+    if combos:
+        fig, axes = plt.subplots(1, len(combos), figsize=(3 * len(combos) + 0.5, 3.0), sharey=True,
+                                 squeeze=False)
+        plot_panels(axes, combos, models, rates, bp)
+        axes[0, 0].set_ylabel("Success (%)")
+        for ax in axes.flat:
+            ax.set_xlabel("Disturbance level")
+        fig.tight_layout()
+        for ext in ("png", "pdf"):
+            fig.savefig(os.path.join(args.out, f"fig_combos.{ext}"), dpi=200)
+
+    # 화면 흔들림: 기존 무작위 떨림(윗줄) vs 연속 진동(아랫줄), 단독 / 카메라 틀어짐과 함께 / 7종 동시
+    if any(k[1] in ("vib", "camera_vib", "all_vib") for k in rates):
+        fig, axes = plt.subplots(2, 3, figsize=(9.5, 5.6), sharey=True)
+        plot_panels(axes, ["shake", "camera_shake", "all", "vib", "camera_vib", "all_vib"], models, rates, bp)
+        axes[0, 0].set_ylabel("Random shake — success (%)")
+        axes[1, 0].set_ylabel("Sine vibration — success (%)")
+        for ax in axes[1, :]:
+            ax.set_xlabel("Disturbance level")
+        fig.tight_layout()
+        for ext in ("png", "pdf"):
+            fig.savefig(os.path.join(args.out, f"fig_vibration.{ext}"), dpi=200)
+    print(f"[analyze] 모델 {models} | 결과 -> {args.out}")
+    for (model, fam), lvl in sorted(bp.items()):
+        print(f"  {model:5s} {fam:13s} 붕괴 단계 {lvl}")
+
+
+def plot_panels(axes, fams, models, rates, bp):
+    """외란마다 한 칸: 모델별 평균 ± 표준편차 곡선, 붕괴 단계는 점선."""
     colors = {"act": "#2b6cb0", "dp": "#c05621", "pi0": "#2f855a"}
-    for ax, fam in zip(axes.flat, FAMS):
+    for ax, fam in zip(axes.flat, fams):
         for model in models:
             xs, ms, ss = [], [], []
             for lv in range(0, DI.N_LEVELS + 1):
@@ -167,16 +228,6 @@ def main():
         ax.set_ylim(-3, 103)
         ax.grid(alpha=0.3)
     axes.flat[0].legend(fontsize=9, loc="lower left")
-    axes[0, 0].set_ylabel("Visual — success (%)")
-    axes[1, 0].set_ylabel("Physical — success (%)")
-    for ax in axes[1, :]:
-        ax.set_xlabel("Disturbance level")
-    fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(os.path.join(args.out, f"fig_curves.{ext}"), dpi=200)
-    print(f"[analyze] 모델 {models} | 결과 -> {args.out}")
-    for (model, fam), lvl in sorted(bp.items()):
-        print(f"  {model:5s} {fam:9s} 붕괴 단계 {lvl}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+03_flicker5_b|flicker=5|dp_s3|24
+03_flicker4_c|flicker=4|dp_s1|8
+03_flicker4_d|flicker=4|dp_s3|8
+05_friction4_b|friction=4|act_s1|7
+05_friction4_c|friction=4|act_s1|14
+05_friction4_d|friction=4|act_s2|1
+09_camera_shake1_b|camera=1,shake=1|act_s1|2
+09_camera_shake1_c|camera=1,shake=1|act_s1|3
+09_camera_shake1_d|camera=1,shake=1|act_s3|2

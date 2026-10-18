@@ -20,7 +20,10 @@ from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.robot.manipulators.examples.franka import Franka
 
 import factory_config as C
-from disturbances import FLICKER_LOW
+from disturbances import FLICKER_LOW, vib_offset
+
+# 정책이 화면을 보는 빈도 (수집 60Hz를 stride 3으로 줄인 20Hz). 연속 진동의 시각 계산에 쓴다.
+OBS_HZ = C.RECORD_HZ / C.TRAIN_STRIDE
 
 
 class Scene:
@@ -332,12 +335,21 @@ def set_lights_for_step(s, params, draws, k):
 
 
 def set_camera_shake_for_step(s, params, draws, k):
-    """정책이 관측하는 k번째 시점의 고정 카메라 떨림. 흔들림이 꺼져 있으면 아무것도 바꾸지 않는다."""
-    if params.get("shake_shift", 0) <= 0 and params.get("shake_rot_deg", 0) <= 0:
+    """정책이 관측하는 k번째 시점의 고정 카메라 떨림(무작위 흔들림 + 연속 진동).
+    둘 다 꺼져 있으면 아무것도 바꾸지 않는다."""
+    shake_on = params.get("shake_shift", 0) > 0 or params.get("shake_rot_deg", 0) > 0
+    vib_on = params.get("vib_shift", 0) > 0 or params.get("vib_rot_deg", 0) > 0
+    if not shake_on and not vib_on:
         return
-    dt, dr = draws["shake"][k % len(draws["shake"])]
-    t = [s.cam_base_t[i] + dt[i] for i in range(3)]
-    r = [s.cam_base_r[i] + dr[i] for i in range(3)]
+    t, r = list(s.cam_base_t), list(s.cam_base_r)
+    if shake_on:
+        dt, dr = draws["shake"][k % len(draws["shake"])]
+        t = [t[i] + dt[i] for i in range(3)]
+        r = [r[i] + dr[i] for i in range(3)]
+    if vib_on:
+        dt, dr = vib_offset(params, draws, k, OBS_HZ)
+        t = [t[i] + dt[i] for i in range(3)]
+        r = [r[i] + dr[i] for i in range(3)]
     UsdGeom.XformCommonAPI(s.over_xform).SetTranslate(Gf.Vec3d(*t))
     UsdGeom.XformCommonAPI(s.over_xform).SetRotate(Gf.Vec3f(*r))
 

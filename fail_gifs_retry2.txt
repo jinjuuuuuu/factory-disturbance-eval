@@ -1,0 +1,3 @@
+10_mass_com5_b|mass=5,com=5|act_s1|22
+10_mass_com5_c|mass=5,com=5|act_s2|0
+10_mass_com5_d|mass=5,com=5|act_s2|18

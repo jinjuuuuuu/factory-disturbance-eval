@@ -39,6 +39,38 @@ RENDER_LOOKAHEAD = int(os.environ.get("RENDER_LOOKAHEAD", "0"))
 SAVE_OBS_DIR = os.environ.get("SAVE_OBS_DIR", "").strip()
 
 
+# ---- 0% 이후 단계 생략 --------------------------------------------------------
+# 같은 정책(같은 결과 폴더)에서 같은 외란(조합)의 더 낮은 단계가 이미 0/N 이면, 더 센 단계도
+# 평가하지 않고 0%로 기록한다 (시간 절약). 어느 단계 때문에 건너뛰었는지는 JSON의
+# "skipped_after"에만 남는다. 켜진 외란이 모두 같은 단계일 때만 적용 (단독, 조합, all, all_vib).
+# 끄려면 SKIP_AFTER_ZERO=0.
+def _zero_below():
+    on = {k: v for k, v in LEVELS.items() if v > 0}
+    if not on or len(set(on.values())) != 1 or _only:
+        return None
+    lv = next(iter(on.values()))
+    for low in range(1, lv):
+        lab = D.label(",".join(f"{k}={low}" for k in on))
+        f = os.path.join(os.path.dirname(OUT_JSON), f"{lab}.json")
+        if os.path.exists(f):
+            r = json.load(open(f))
+            if r.get("n_episodes") and r.get("n_success") == 0:
+                return lab
+    return None
+
+
+if os.environ.get("SKIP_AFTER_ZERO", "1") == "1" and (_src := _zero_below()):
+    os.makedirs(os.path.dirname(OUT_JSON) or ".", exist_ok=True)
+    with open(OUT_JSON, "w") as f:
+        json.dump({"model": MODEL_LABEL, "dist": DIST, "label": D.label(DIST), "levels": LEVELS,
+                   "params": PARAMS, "n_episodes": 0, "n_success": 0, "success_rate": 0.0,
+                   "skipped_after": _src, "failure_modes": {}, "blank_camera_frames": 0,
+                   "camera_frames_total": 0, "eval_seed": C.EVAL_SEED, "episodes": []},
+                  f, indent=2, ensure_ascii=False)
+    print(f"[eval] DONE {D.label(DIST)} success=0% ({_src} 0% 이후 단계) -> {OUT_JSON}", flush=True)
+    raise SystemExit(0)
+
+
 # ---- 소켓 ------------------------------------------------------------------
 def send(sock, obj):
     data = pickle.dumps(obj, protocol=4)

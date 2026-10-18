@@ -1,0 +1,5 @@
+friction=1,mass=3
+friction=2,mass=3
+friction=3,mass=3
+friction=4,mass=3
+friction=5,mass=3

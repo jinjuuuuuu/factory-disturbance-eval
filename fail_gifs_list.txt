@@ -1,0 +1,10 @@
+01_camera1|camera=1|act_s1|0
+02_light5|light=5|act_s1|17
+03_flicker5|flicker=5|dp_s3|14
+04_shake5|shake=5|dp_s3|13
+05_friction4|friction=4|act_s1|5
+06_all1|all=1|act_s1|0
+07_friction_com3|friction=3,com=3|act_s1|0
+08_light_flicker5|light=5,flicker=5|act_s1|17
+09_camera_shake1|camera=1,shake=1|act_s1|0
+10_mass_com5|mass=5,com=5|act_s1|18

@@ -1,0 +1,5 @@
+friction=1,com=1
+friction=2,com=2
+friction=3,com=3
+friction=4,com=4
+friction=5,com=5
