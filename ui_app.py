@@ -56,6 +56,27 @@ def model_choices():
     return gr.update(choices=list(MODELS), value=(list(MODELS) or [None])[0])
 
 
+def add_model(name, path):
+    """화면에서 모델을 추가한다: 이름과 체크포인트 폴더를 models.json에 적고 목록을 새로 고친다."""
+    global MODELS
+    name, path = (name or "").strip(), (path or "").strip().rstrip("/")
+    if not name or not path:
+        return gr.update(), "이름과 체크포인트 폴더를 모두 입력하세요."
+    if os.path.isfile(os.path.join(path, "pretrained_model", "config.json")):
+        path = os.path.join(path, "pretrained_model")       # checkpoints/<스텝> 까지만 넣어도 된다
+    cfg = os.path.join(path, "config.json")
+    if not os.path.isfile(cfg):
+        return gr.update(), f"config.json이 없습니다: {path} (LeRobot 체크포인트의 pretrained_model 폴더를 넣어야 합니다)"
+    ptype = json.load(open(cfg)).get("type", "?")
+    mj = os.path.join(D, "models.json")
+    saved = json.load(open(mj)) if os.path.exists(mj) else {}
+    saved[name] = path
+    with open(mj, "w") as f:
+        json.dump(saved, f, indent=1, ensure_ascii=False)
+    MODELS = find_models()
+    return gr.update(choices=list(MODELS), value=name), f"추가했습니다: {name} ({ptype})"
+
+
 MODELS = find_models()
 _servers = {}            # 모델 경로 -> (Popen, port)
 
@@ -165,14 +186,20 @@ with gr.Blocks(title="공장 외란 주입 검증") as app:
                     model = gr.Dropdown(list(MODELS), label="모델 (학습 끝난 것만 표시)",
                                         value=(list(MODELS) or [None])[0], scale=4)
                     b_ref = gr.Button("목록 새로고침", scale=1)
+                with gr.Accordion("모델 추가 (LeRobot 체크포인트)", open=False):
+                    new_name = gr.Textbox(label="이름", placeholder="예: smolvla_s1")
+                    new_path = gr.Textbox(label="체크포인트 폴더",
+                                          placeholder="/data/jinju/factory/<모델>/checkpoints/<스텝>/pretrained_model")
+                    b_add = gr.Button("추가")
+                    add_msg = gr.Markdown()
                 n_ep = gr.Slider(1, 30, value=5, step=1, label="평가 에피소드 수")
                 gr.Markdown("**시각 외란** (카메라 영상이 달라짐)")
                 light = gr.Slider(10, 100, value=100, step=5, label="조명 밝기 % (100 = 외란 없음)")
                 flicker = gr.Slider(0, 50, value=0, step=5, label="조명 깜빡임 확률 %")
                 cam_cm = gr.Slider(0, 5, value=0, step=0.5, label="카메라 틀어짐: 이동 (cm)")
                 cam_deg = gr.Slider(0, 5, value=0, step=0.5, label="카메라 틀어짐: 회전 (도)")
-                vib_mm = gr.Slider(0, 10, value=0, step=1, label="연속 진동: 이동 진폭 (mm)")
-                vib_deg = gr.Slider(0, 1.0, value=0, step=0.1, label="연속 진동: 회전 진폭 (도)")
+                vib_mm = gr.Slider(0, 10, value=0, step=1, label="카메라 진동: 이동 진폭 (mm)")
+                vib_deg = gr.Slider(0, 1.0, value=0, step=0.1, label="카메라 진동: 회전 진폭 (도)")
                 gr.Markdown("**물리 외란** (상자를 잡고 옮기는 힘이 달라짐)")
                 mu = gr.Slider(0.1, 1.0, value=1.0, step=0.05, label="상자 마찰계수 (1.0 = 외란 없음)")
                 mass = gr.Slider(1.0, 6.0, value=1.0, step=0.5, label="상자 질량 배율 (기준 0.2kg)")
@@ -192,6 +219,7 @@ with gr.Blocks(title="공장 외란 주입 검증") as app:
         b_pv.click(preview, sliders, [img_over, img_wrist, info])
         b_run.click(run_eval, [model, n_ep] + sliders, [gif, log, summary])
         b_ref.click(model_choices, None, model)
+        b_add.click(add_model, [new_name, new_path], [model, add_msg])
     with gr.Tab("일괄 실험 결과"):
         fam = gr.Dropdown(DI.MAIN + ["all", "friction_com", "light_flicker", "camera_vib", "mass_com",
                                    "friction_mass3"], value="camera", label="외란 종류 (단일·7종 동시·현장 조합)")
