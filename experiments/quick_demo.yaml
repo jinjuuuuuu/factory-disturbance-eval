@@ -1,4 +1,4 @@
-# quick_demo.yaml - 프레임워크 시연용 작은 실험 (모델 1개, 조건 7개, 5회씩 = 약 15분)
+# quick_demo.yaml - 프레임워크 시연용 작은 실험 (모델 1개, 조건 8개, 5회씩)
 #   python run_experiment.py --config experiments/quick_demo.yaml
 name: quick_demo
 episodes: 5
@@ -9,9 +9,11 @@ models:
 
 runs:
   baseline: {}                                        # 외란 없음
-  friction: {sweep: friction, levels: [2, 4]}         # 마찰 2·4단계
-  light:    {sweep: light, levels: [3, 5]}            # 조명 3·5단계
-  combined: {sweep: all, levels: [2]}                 # 6종 동시 2단계
-  custom:   {disturbance: "com=4,mass=3"}             # 조합 직접 지정
+  camera:   {sweep: camera, levels: [1, 3]}           # 카메라 틀어짐 1·3단계
+  light:    {sweep: light, levels: [5]}               # 조명 5단계
+  vib:      {sweep: vib, levels: [5]}                 # 연속 진동 5단계
+  combined: {sweep: all, levels: [2]}                 # 7종 동시 2단계
+  control:  {sweep: friction, fixed: "mass=3", levels: [3]}   # 마찰 3단계 + 무게 3배
+  custom:   {disturbance: "light=4,flicker=4"}        # 조건 직접 지정
 
 analyze: true

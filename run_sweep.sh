@@ -25,8 +25,10 @@ source ~/miniforge3/etc/profile.d/conda.sh
 if [ -n "$LIST" ]; then
   mapfile -t CONDS < "$LIST"
 else
+  # 기본: 외란 없음 + 단일 외란 7종 x 5단계 + 7종 동시 x 5단계 = 41개
+  # (현장 조합까지 한 번에 돌리려면 run_experiment.py + experiments/paper_main.yaml)
   CONDS=("")
-  for f in friction light flicker camera shake mass com; do
+  for f in friction light flicker camera vib mass com; do
     for l in 1 2 3 4 5; do CONDS+=("$f=$l"); done
   done
   for l in 1 2 3 4 5; do CONDS+=("all=$l"); done

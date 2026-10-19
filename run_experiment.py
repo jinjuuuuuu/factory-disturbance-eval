@@ -19,8 +19,10 @@
 #   runs:                                  실험 조건 묶음. 각 항목은 셋 중 하나:
 #     baseline: {}                                   외란 없음
 #     friction: {sweep: friction, levels: [1,2,3]}    한 외란을 여러 단계로
-#     combined: {sweep: all, levels: [1,2,3,4,5]}     6종을 같은 단계로 동시에
-#     custom:   {disturbance: "light=2,com=4"}        조합을 직접 지정 (단계 또는 물리값)
+#     combined: {sweep: all, levels: [1,2,3,4,5]}     7종을 같은 단계로 동시에
+#     night:    {sweep: [light, flicker]}             조합: 목록의 외란을 같은 단계로 함께 올림
+#     control:  {sweep: friction, fixed: "mass=3"}    한 외란만 올리고 다른 외란은 고정
+#     custom:   {disturbance: "light=2,com=4"}        조건 하나를 직접 지정 (단계 또는 물리값)
 #   analyze: true                          끝나면 analyze.py로 그래프·표 생성
 # ---------------------------------------------------------------------------
 import os
@@ -43,10 +45,14 @@ def conditions_from_runs(runs):
     for run_name, spec in (runs or {}).items():
         spec = spec or {}
         if "sweep" in spec:
-            fam = spec["sweep"]
-            if fam != "all" and fam not in D.LEVELS:
-                raise SystemExit(f"[config] runs.{run_name}: 알 수 없는 외란 '{fam}'. 가능: {D.ORDER + ['all']}")
-            dists = [f"{fam}={lv}" for lv in spec.get("levels", range(1, D.N_LEVELS + 1))]
+            # sweep: 외란 하나, 또는 목록(같은 단계로 함께 올리는 조합). fixed: 단계와 무관하게 고정할 외란
+            fams = spec["sweep"] if isinstance(spec["sweep"], list) else [spec["sweep"]]
+            for fam in fams:
+                if fam != "all" and fam not in D.MAIN:
+                    raise SystemExit(f"[config] runs.{run_name}: 외란 '{fam}'은 쓸 수 없다. 가능: {D.MAIN + ['all']}")
+            fixed = str(spec.get("fixed", "")).strip()
+            dists = [",".join([f"{f}={lv}" for f in fams] + ([fixed] if fixed else []))
+                     for lv in spec.get("levels", range(1, D.N_LEVELS + 1))]
         elif "disturbance" in spec:
             dists = [str(spec["disturbance"])]
         else:
@@ -79,7 +85,7 @@ def main():
     if not args.config:
         ap.error("--config 가 필요하다")
 
-    cfg = yaml.safe_load(open(args.config))
+    cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
     name = cfg.get("name") or os.path.splitext(os.path.basename(args.config))[0]
     root = os.path.join(cfg.get("output", "/data/jinju/factory/experiments"), name)
     n_ep = int(cfg.get("episodes", 25))
@@ -105,10 +111,10 @@ def main():
         return
 
     os.makedirs(root, exist_ok=True)
-    with open(os.path.join(root, "config_used.yaml"), "w") as f:      # 재현용 기록
+    with open(os.path.join(root, "config_used.yaml"), "w", encoding="utf-8") as f:      # 재현용 기록
         yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
     list_file = os.path.join(root, "conditions.txt")
-    with open(list_file, "w") as f:
+    with open(list_file, "w", encoding="utf-8") as f:
         f.write("\n".join(d for _, d in conds) + "\n")
 
     procs, base = [], args.port_base

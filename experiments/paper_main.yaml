@@ -1,12 +1,14 @@
 # paper_main.yaml - 논문 본 실험과 같은 설정
-#   ACT·DP x 학습 시드 3개 x 조건 41개(외란 없음 + 7종 x 5단계 + 7종 동시 x 5단계) x 25회
+#   ACT·DP x 학습 시드 3개 x 조건 66개 x 25회
+#   조건 = 외란 없음 1 + 단일 외란 7종 x 5단계 35 + 7종 동시 x 5단계 5 + 현장 조합 5종 x 5단계 25
 #   python run_experiment.py --config experiments/paper_main.yaml
 # 모델 이름을 <모델>_s<시드>로 두면 분석이 시드끼리 묶어 평균 ± 표준편차를 낸다.
 # 체크포인트는 시드마다 고르지 않고 마지막 스텝(ACT 3만, DP 4만)으로 고정한다.
+# 어떤 외란(조합)이 낮은 단계에서 0/25면 더 센 단계는 평가하지 않고 0%로 기록한다 (eval_client.py).
 name: paper_main
 episodes: 25
 eval_seed: 0
-workers_per_model: 2
+workers_per_model: 1          # 모델 6개 x 1 = Isaac Sim 6개 (12개는 GPU 96GB가 차서 멈춘 적이 있다)
 
 models:
   act_s1: /data/jinju/factory/act_v2_s1/checkpoints/030000/pretrained_model
@@ -18,13 +20,22 @@ models:
 
 runs:
   baseline: {}
-  friction: {sweep: friction, levels: [1, 2, 3, 4, 5]}
-  light:    {sweep: light,    levels: [1, 2, 3, 4, 5]}
-  flicker:  {sweep: flicker,  levels: [1, 2, 3, 4, 5]}
-  camera:   {sweep: camera,   levels: [1, 2, 3, 4, 5]}
-  shake:    {sweep: shake,    levels: [1, 2, 3, 4, 5]}
-  mass:     {sweep: mass,     levels: [1, 2, 3, 4, 5]}
-  com:      {sweep: com,      levels: [1, 2, 3, 4, 5]}
-  combined: {sweep: all,      levels: [1, 2, 3, 4, 5]}
+  # 단일 외란 - 시각
+  light:    {sweep: light}
+  flicker:  {sweep: flicker}
+  camera:   {sweep: camera}
+  vib:      {sweep: vib}
+  # 단일 외란 - 물리
+  friction: {sweep: friction}
+  mass:     {sweep: mass}
+  com:      {sweep: com}
+  # 7종 동시
+  combined: {sweep: all}
+  # 현장 조합
+  friction_com:   {sweep: [friction, com]}       # 기름 묻은 패드 + 내용물 쏠림
+  night:          {sweep: [light, flicker]}      # 야간·조명 노후
+  equipment_vib:  {sweep: [camera, vib]}         # 거치대가 틀어진 채로 계속 진동
+  heavy_shifted:  {sweep: [mass, com]}           # 무겁고 쏠린 제품
+  friction_mass3: {sweep: friction, fixed: "mass=3"}   # 대조: 마찰+무게중심 급락이 무게 때문인지
 
 analyze: true

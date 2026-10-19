@@ -34,7 +34,6 @@ EPISODES = [(i, p) for i, p in enumerate(POSITIONS)
 SAVE_FAIL_FRAMES = os.environ.get("SAVE_FAIL_FRAMES", "0") == "1"
 # RECORD_GIF=<경로>: 첫 에피소드를 고정 카메라 GIF로 저장 (화면 앱·포스터 시연용)
 RECORD_GIF = os.environ.get("RECORD_GIF", "").strip()
-RENDER_LOOKAHEAD = int(os.environ.get("RENDER_LOOKAHEAD", "0"))
 # SAVE_OBS_DIR=<폴더>: 에피소드마다 정책이 받은 처음 3개 관측(고정 카메라)을 저장 (렌더링 방식 비교용)
 SAVE_OBS_DIR = os.environ.get("SAVE_OBS_DIR", "").strip()
 
@@ -206,13 +205,9 @@ for ep, (bx, by) in EPISODES:
                 n_grasp_cmds += 1
             prev_closed = closed
         s.franka.apply_action(ArticulationAction(joint_positions=cmd))
-        # 렌더링은 정책이 다음에 화면을 볼 때만 필요하다. RENDER_LOOKAHEAD=n이면 관측 직전 n개
-        # 물리 스텝만 렌더링한다(물리는 매 스텝 그대로). 0이면 예전처럼 매 스텝 렌더링.
-        # ACT는 한 번 보고 100 정책스텝을 실행하므로 렌더링이 크게 줄어든다.
-        gif_step = RECORD_GIF and ep == EPISODES[0][0] and (step + 1) % 6 == 0
-        render_now = (RENDER_LOOKAHEAD <= 0 or step < 2 or gif_step
-                      or (need_obs and (step % ACTION_REPEAT) >= ACTION_REPEAT - RENDER_LOOKAHEAD))
-        s.world.step(render=render_now)
+        # 매 물리 스텝 렌더링한다. 관측 직전만 렌더링하면 빨라지지만 렌더러의 시간 누적 효과 때문에
+        # 정책이 받는 이미지가 달라져 결과가 바뀌었다(10/15 A/B 비교) - 그래서 쓰지 않는다.
+        s.world.step(render=True)
         if RECORD_GIF and ep == EPISODES[0][0] and step % 6 == 5:
             gif_frames.append(Image.fromarray(F.grab_rgb(s, s.over_cam)))
 

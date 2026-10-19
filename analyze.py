@@ -12,7 +12,10 @@
 #   떨어지는 단계. 5단계까지 떨어지지 않으면 '>5'.
 #
 # 출력: summary.csv (모델·외란·단계별 평균/표준편차), breakdown.csv, failure_modes.csv,
-#       fig_curves.png (외란별 성공률 곡선), fig_curves.pdf, fig_combos.png (현장 조합)
+#       grasp_stats.csv, fig_curves.png/pdf (단일 외란 7종 + 7종 동시), fig_combos.png/pdf (현장 조합)
+#
+# 사용 중단된 무작위 흔들림(shake) 결과는 기본으로 표·그림에서 뺀다. --include-legacy를 주면
+# 표에 넣고 fig_vibration(무작위 흔들림 vs 연속 진동)도 만든다.
 # ---------------------------------------------------------------------------
 import os
 import re
@@ -27,23 +30,25 @@ import disturbances as DI
 
 # 현장 조합 외란: 이름 -> 함께 켜는 외란 (모두 같은 단계). 결과가 있으면 표와 fig_combos에 들어간다.
 COMBOS = {"friction_com": ("friction", "com"), "light_flicker": ("light", "flicker"),
-          "camera_shake": ("camera", "shake"), "mass_com": ("mass", "com"),
-          "camera_vib": ("camera", "vib"),
+          "camera_vib": ("camera", "vib"), "mass_com": ("mass", "com"),
           # 대조 조건: 마찰+무게중심의 급락이 쏠림 때문인지 무게(3배) 때문인지 가른다
           "friction_mass3": ("friction", "mass")}
-FAMS = DI.ORDER + ["all", "all_vib"] + list(COMBOS)
+# 사용 중단된 무작위 흔들림(shake) 관련 묶음 (기존 결과를 읽을 때만)
+LEGACY_COMBOS = {"camera_shake": ("camera", "shake")}
+LEGACY_FAMS = ["shake", "all_shake", "camera_shake"]
+FAMS = DI.MAIN + ["all"] + list(COMBOS)
 NAMES_KO = {"friction": "마찰", "light": "조명 밝기", "flicker": "조명 깜빡임", "camera": "카메라 틀어짐",
-            "shake": "화면 흔들림", "mass": "질량", "com": "무게중심 쏠림", "all": "7종 동시",
-            "vib": "연속 진동", "all_vib": "7종 동시 (연속 진동)"}
+            "vib": "연속 진동", "mass": "질량", "com": "무게중심 쏠림", "all": "7종 동시",
+            "shake": "무작위 흔들림(사용 중단)", "all_shake": "7종 동시(무작위 흔들림, 사용 중단)"}
 NAMES_EN = {"friction": "Friction", "light": "Light dimming", "flicker": "Light flicker",
-            "camera": "Camera offset", "shake": "Camera shake", "mass": "Mass", "com": "CoM shift",
-            "all": "All seven", "vib": "Vibration (sine)", "all_vib": "All seven (vibration)"}
+            "camera": "Camera offset", "vib": "Camera vibration", "mass": "Mass", "com": "CoM shift",
+            "all": "All seven", "shake": "Random shake (legacy)", "all_shake": "All seven, random shake (legacy)"}
 NAMES_KO.update({"friction_com": "마찰+무게중심", "light_flicker": "야간·조명 노후 (밝기+깜빡임)",
-                 "camera_shake": "설비 진동 (틀어짐+흔들림)", "mass_com": "무겁고 쏠린 제품 (질량+무게중심)",
-                 "friction_mass3": "마찰+무게 3배 (대조)", "camera_vib": "설비 진동 (틀어짐+연속 진동)"})
+                 "camera_vib": "설비 진동 (틀어짐+진동)", "mass_com": "무겁고 쏠린 제품 (질량+무게중심)",
+                 "friction_mass3": "마찰+무게 3배 (대조)", "camera_shake": "틀어짐+무작위 흔들림(사용 중단)"})
 NAMES_EN.update({"friction_com": "Friction + CoM", "light_flicker": "Dimming + flicker",
-                 "camera_shake": "Camera offset + shake", "mass_com": "Mass + CoM",
-                 "friction_mass3": "Friction + mass x3 (control)", "camera_vib": "Camera offset + vibration"})
+                 "camera_vib": "Camera offset + vibration", "mass_com": "Mass + CoM",
+                 "friction_mass3": "Friction + mass x3 (control)", "camera_shake": "Camera offset + shake (legacy)"})
 
 
 def family_level(levels):
@@ -52,15 +57,15 @@ def family_level(levels):
         return "clean", 0
     if set(on) == set(DI.ALL_FAMS) and len(set(on.values())) == 1:
         return "all", next(iter(on.values()))
-    if set(on) == set(DI.ALL_VIB_FAMS) and len(set(on.values())) == 1:
-        return "all_vib", next(iter(on.values()))
+    if set(on) == set(DI.ALL_SHAKE_FAMS) and len(set(on.values())) == 1:
+        return "all_shake", next(iter(on.values()))
     if len(on) == 1:
         k = next(iter(on))
         return k, on[k]
     # 대조 조건: 질량은 3단계(3배)로 고정하고 마찰 단계만 올린다
     if set(on) == {"friction", "mass"} and on["mass"] == 3:
         return "friction_mass3", on["friction"]
-    for name, fams in COMBOS.items():
+    for name, fams in {**COMBOS, **LEGACY_COMBOS}.items():
         if set(on) == set(fams) and len(set(on.values())) == 1:
             return name, next(iter(on.values()))
     return None, None
@@ -102,9 +107,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--eval-root", default="/data/jinju/factory/eval")
     ap.add_argument("--out", default="/data/jinju/factory/analysis")
+    ap.add_argument("--include-legacy", action="store_true",
+                    help="사용 중단된 무작위 흔들림(shake) 결과도 표에 넣고 fig_vibration을 만든다")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     rates, modes, grasp = load(args.eval_root)
+    global FAMS
+    if args.include_legacy:
+        FAMS = FAMS + LEGACY_FAMS
+    else:                                   # 표·그림에서 사용 중단 외란을 뺀다
+        drop = set(LEGACY_FAMS)
+        rates = defaultdict(dict, {k: v for k, v in rates.items() if k[1] not in drop})
+        modes = defaultdict(lambda: defaultdict(int), {k: v for k, v in modes.items() if k[1] not in drop})
+        grasp = {k: v for k, v in grasp.items() if k[1] not in drop}
     models = sorted({k[0] for k in rates})
     if not models:
         raise SystemExit("결과 없음")
@@ -176,7 +191,7 @@ def main():
         fig.savefig(os.path.join(args.out, f"fig_curves.{ext}"), dpi=200)
 
     # 현장 조합 그림 (결과가 있는 조합만)
-    combos = [c for c in COMBOS if c != "camera_vib" and any(k[1] == c for k in rates)]
+    combos = [c for c in COMBOS if any(k[1] == c for k in rates)]
     if combos:
         fig, axes = plt.subplots(1, len(combos), figsize=(3 * len(combos) + 0.5, 3.0), sharey=True,
                                  squeeze=False)
@@ -188,10 +203,10 @@ def main():
         for ext in ("png", "pdf"):
             fig.savefig(os.path.join(args.out, f"fig_combos.{ext}"), dpi=200)
 
-    # 화면 흔들림: 기존 무작위 떨림(윗줄) vs 연속 진동(아랫줄), 단독 / 카메라 틀어짐과 함께 / 7종 동시
-    if any(k[1] in ("vib", "camera_vib", "all_vib") for k in rates):
+    # (사용 중단 비교) 무작위 흔들림(윗줄) vs 연속 진동(아랫줄): 단독 / 카메라 틀어짐과 함께 / 7종 동시
+    if args.include_legacy and any(k[1] in LEGACY_FAMS for k in rates):
         fig, axes = plt.subplots(2, 3, figsize=(9.5, 5.6), sharey=True)
-        plot_panels(axes, ["shake", "camera_shake", "all", "vib", "camera_vib", "all_vib"], models, rates, bp)
+        plot_panels(axes, ["shake", "camera_shake", "all_shake", "vib", "camera_vib", "all"], models, rates, bp)
         axes[0, 0].set_ylabel("Random shake — success (%)")
         axes[1, 0].set_ylabel("Sine vibration — success (%)")
         for ax in axes[1, :]:

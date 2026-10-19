@@ -6,13 +6,13 @@
 #   DIST=""                          외란 없음 (기준 조건)
 #   DIST="friction=3"                마찰만 3단계
 #   DIST="light=2,com=4"             조명 2단계 + 무게중심 4단계 동시
-#   DIST="all=3"                     7종(흔들림 포함)을 3단계로 동시에
-#   DIST="all_vib=3"                 7종에서 흔들림 대신 연속 진동을 넣어 3단계로 동시에
+#   DIST="all=3"                     7종(MAIN)을 3단계로 동시에
+#   DIST="friction=3,mass=3"         조합 (외란마다 단계를 따로 줄 수 있다)
 #   DIST="friction_mu=0.33"          단계 대신 물리값을 직접 지정 (세밀한 탐색용)
 #
-# 단계 0은 '외란 없음'과 같다. 단계 1~5로 갈수록 강해진다.
-# 값의 근거와 범위는 각 항목 주석 참고. [잠정] 표시는 장면 점검(scene_check.py)
-# 결과를 보고 붕괴 구간이 단계 안에 들어오도록 조정할 값이다.
+# 외란 7종: 시각 4종(light, flicker, camera, vib) + 물리 3종(friction, mass, com).
+# 단계 0은 '외란 없음'과 같다. 단계 1~5로 갈수록 강해진다. 값의 근거는 각 항목 주석 참고.
+# 'shake'(무작위 흔들림)는 사용 중단 - 아래 LEGACY 참고.
 #
 # 에피소드마다 달라지는 무작위 요소(카메라가 틀어지는 방향, 내용물이 쏠리는 방향,
 # 깜빡임 패턴)는 (EVAL_SEED, 에피소드 번호)로 시드를 고정한다. 그래서 같은 조건이면
@@ -80,13 +80,20 @@ LEVELS = {
 # 무게중심 단독 시험 때의 질량 배율 (가벼운 상자는 쏠려도 파지에 영향이 없다)
 COM_TEST_MASS_SCALE = 3.0
 
+# ORDER는 결과 파일 이름(label)을 만드는 순서라 바꾸지 않는다 (기존 결과와 이름이 맞아야 한다).
 ORDER = ["friction", "light", "flicker", "camera", "mass", "com", "shake", "vib"]
-# 'all=k'(복합 외란)에 들어가는 외란 = 원래 7종 (vib 추가 전 정의 그대로 - 기존 결과와 같은 조건)
-ALL_FAMS = ["friction", "light", "flicker", "camera", "mass", "com", "shake"]
-# 'all_vib=k': 같은 7종이되 무작위 떨림(shake) 대신 연속 진동(vib)
-ALL_VIB_FAMS = ["friction", "light", "flicker", "camera", "mass", "com", "vib"]
-VISUAL = ["light", "flicker", "camera", "shake"]
+# 프레임워크가 다루는 외란 7종. 카메라 진동은 연속 진동(vib)만 쓴다.
+MAIN = ["friction", "light", "flicker", "camera", "vib", "mass", "com"]
+VISUAL = ["light", "flicker", "camera", "vib"]
 PHYSICAL = ["friction", "mass", "com"]
+# 'all=k'(복합 외란) = 7종을 같은 단계로 동시에 ('all_vib=k'는 예전 이름, 같은 뜻)
+ALL_FAMS = ["friction", "light", "flicker", "camera", "mass", "com", "vib"]
+
+# --- 사용 중단(legacy) -------------------------------------------------------------
+# 'shake'(관측마다 서로 무관한 무작위 떨림)는 5단계가 지진 수준이라 비현실적이어서 쓰지 않는다.
+# 10/15~17에 평가한 결과를 다시 읽고 재현할 수 있도록 정의만 남긴다 ('all_shake=k'가 그때의 7종 동시).
+LEGACY = ["shake"]
+ALL_SHAKE_FAMS = ["friction", "light", "flicker", "camera", "mass", "com", "shake"]
 
 FLICKER_LOW = 0.2       # 깜빡일 때 밝기 배율
 
@@ -113,9 +120,9 @@ def parse(spec):
         if "=" not in item:
             raise ValueError(f"DIST 항목은 이름=값 이어야 한다: '{item}'")
         name, val = (s.strip() for s in item.split("=", 1))
-        if name in ("all", "all_vib"):
+        if name in ("all", "all_vib", "all_shake"):
             lv = _level(val, name)
-            for n in (ALL_FAMS if name == "all" else ALL_VIB_FAMS):
+            for n in (ALL_SHAKE_FAMS if name == "all_shake" else ALL_FAMS):
                 _apply_level(params, levels, n, lv)
         elif name in LEVELS:
             _apply_level(params, levels, name, _level(val, name))
@@ -123,7 +130,7 @@ def parse(spec):
             params[name] = float(val)
             levels[_owner(name)] = -1              # -1 = 단계가 아닌 직접 지정
         else:
-            raise ValueError(f"알 수 없는 외란 '{name}'. 가능: {ORDER + ['all', 'all_vib'] + list(params)}")
+            raise ValueError(f"알 수 없는 외란 '{name}'. 가능: {MAIN + ['all'] + list(params)}")
     # 무게중심만 켜고 질량은 안 건드렸으면, 질량을 시험용 배율로 올린다
     if levels["com"] > 0 and levels["mass"] == 0:
         params["mass_scale"] = COM_TEST_MASS_SCALE
@@ -233,10 +240,13 @@ def vib_offset(params, draws, k, obs_hz):
 
 if __name__ == "__main__":
     print("외란 단계표 (0 = 없음)")
-    for n in ORDER:
-        d = LEVELS[n]
-        vals = " ".join(f"{v:g}" for v in d["values"])
-        extra = (" / 회전 " + " ".join(f"{v:g}" for v in d["rot_values"]) + "deg") if "rot_values" in d else ""
-        print(f"  {n:9s} [{d['unit']}] {vals}{extra}   - {d['desc']}")
-    for s in ["", "friction=3", "light=2,com=4", "all=5", "all_vib=5", "vib=3", "friction_mu=0.33"]:
-        print(f"  DIST={s!r:22s} -> {label(s):35s} {parse(s)[0]}")
+    for group, fams in (("시각", VISUAL), ("물리", PHYSICAL)):
+        print(f" [{group}]")
+        for n in fams:
+            d = LEVELS[n]
+            vals = " ".join(f"{v:g}" for v in d["values"])
+            extra = (" / 회전 " + " ".join(f"{v:g}" for v in d["rot_values"]) + "deg") if "rot_values" in d else ""
+            print(f"  {n:9s} [{d['unit']}] {vals}{extra}   - {d['desc']}")
+    print(f" 사용 중단: {', '.join(LEGACY)} (기존 결과 재현용으로만 남김)")
+    for s in ["", "friction=3", "light=2,com=4", "all=5", "friction=3,mass=3", "friction_mu=0.33"]:
+        print(f"  DIST={s!r:22s} -> {label(s)}")

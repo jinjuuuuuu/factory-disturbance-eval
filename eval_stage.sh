@@ -37,6 +37,6 @@ for s in 1 2 3; do
 done
 wait
 n=$(ls $EVAL_ROOT/${MODEL}_s*/*.json 2>/dev/null | wc -l)
-say "평가 끝: 결과 $n개 (기대 108)"
+say "평가 끝: 결과 $n개 (기본 조건 41개 x 시드 3 = 123)"
 ~/miniforge3/envs/lerobot/bin/python analyze.py --eval-root "$EVAL_ROOT" --out "$D/analysis_$VER" \
   && say "분석 완료 -> $D/analysis_$VER"

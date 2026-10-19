@@ -32,6 +32,7 @@
 | `grasp_stats.csv` | 파지 재시도 통계 |
 | `fig_curves.png/pdf` | 단일 외란 7종 + 7종 동시 |
 | `fig_combos.png/pdf` | 현장 조합 (마찰+무게중심, 야간·조명 노후, 설비 진동, 무겁고 쏠린 제품, 마찰+무게 3배 대조) |
-| `fig_vibration.png/pdf` | 무작위 흔들림(윗줄) vs 연속 진동(아랫줄): 단독, 카메라 틀어짐과 함께, 7종 동시 |
 
 분석 다시 만들기 (Linux): `cd results && tar xzf eval_v2_json.tgz && cd .. && python analyze.py --eval-root results/eval_v2 --out results/analysis`
+
+> `eval_v2_json.tgz`에는 지금은 쓰지 않는 무작위 흔들림(`shake`, `all_shake`, `camera_shake`) 결과 15개도 들어 있다. 기본 분석은 이를 빼고, `--include-legacy`를 붙이면 포함한다.
